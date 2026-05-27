@@ -104,6 +104,64 @@ go list -deps ./internal/domain/usecase | grep -E 'adapter|application|infrastru
 - El trabajo pesado se lanza en background con `context.Background()`, **no** con
   el contexto del request (que se cancela al responder).
 
+## Workers y colas (modelo multi-proceso, como `arq`)
+
+El trabajo pesado (el pipeline de inspiración) se ejecuta **fuera del request**.
+Hay dos drivers, seleccionados por `QUEUE_DRIVER`, detrás del mismo port
+`application.Enqueuer` — el handler HTTP no cambia entre uno y otro:
+
+| `QUEUE_DRIVER` | Cómo corre | Job store | Equivale en Python a |
+|---|---|---|---|
+| `inprocess` (default) | goroutine en el proceso del API | en memoria | `BackgroundTasks` |
+| `asynq` | tarea en Redis que consume un proceso `cmd/worker` aparte | Redis (compartido) | `arq` + Redis worker |
+
+Flujo en modo `asynq`:
+
+```
+POST /inspiration/search
+   → InspirationService.Start  (persiste job "pending" en Redis)
+   → Enqueuer.EnqueueInspiration  → asynq.Client → Redis (cola)
+   ⇢ 202 Accepted  (responde ya)
+                        Redis (cola)
+                           ↓ pull
+   cmd/worker  → asynq.Server (pool de N goroutines) → InspirationService.RunCommand
+              → escribe el job "ready" en el MISMO job store de Redis
+GET /inspiration/{jobId}  (polling)  → el API lee el estado desde Redis
+```
+
+Piezas en el código:
+
+- **Port**: `application.Enqueuer` (`internal/application/enqueuer.go`).
+- **Adapters outbound**: `queue.InProcess` (goroutine) y `queue.AsynqEnqueuer`
+  (Redis) en `internal/adapter/outbound/queue/`.
+- **Adapter inbound (worker)**: `worker.InspirationWorker`
+  (`internal/adapter/inbound/worker/`), registrado en `cmd/worker`.
+- **Estado compartido**: `redisstore.JobStore`
+  (`internal/adapter/outbound/redisstore/`) para que API y worker se vean.
+
+> El **dominio y los use cases no cambian** entre `inprocess` y `asynq`: cambiar
+> de una goroutine a una cola distribuida es una línea en el `Container`. Ese es
+> el beneficio de tener `Enqueuer` como port.
+
+Correrlo de verdad (necesita Redis):
+
+```bash
+# 1. Redis
+redis-server --port 6379 &
+
+# 2. Worker (proceso aparte)
+QUEUE_DRIVER=asynq REDIS_ADDR=127.0.0.1:6379 go run ./cmd/worker
+
+# 3. API en modo cola
+QUEUE_DRIVER=asynq REDIS_ADDR=127.0.0.1:6379 go run ./cmd/api
+
+# o todo junto:
+docker compose up --build
+```
+
+`asynq.Config{Concurrency: N}` en `cmd/worker` es el análogo de `max_jobs` de
+arq; `asynq.MaxRetry(3)` al encolar, el análogo de los reintentos.
+
 ## Endpoints
 
 Mismos que la versión Python (compatibles con el frontend Next.js):

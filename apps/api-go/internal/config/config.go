@@ -25,7 +25,20 @@ type Config struct {
 	AnthropicAPIKey     string
 	DatabaseURL         string
 	RedisURL            string
+
+	// QueueDriver selects how background inspiration jobs are run:
+	//   "inprocess" (default) → a goroutine in the API process (no Redis).
+	//   "asynq"               → enqueue to Redis; a separate `cmd/worker`
+	//                           process consumes and runs them.
+	// In "asynq" mode the job store is also backed by Redis so the API and the
+	// worker (two processes) share job state.
+	QueueDriver string
+	// RedisAddr is the host:port used by asynq and the Redis job store.
+	RedisAddr string
 }
+
+// UsesAsynq reports whether the asynq/Redis queue driver is selected.
+func (c Config) UsesAsynq() bool { return c.QueueDriver == "asynq" }
 
 // Load reads configuration from the environment, applying defaults.
 func Load() Config {
@@ -38,6 +51,8 @@ func Load() Config {
 		AnthropicAPIKey:     env("ANTHROPIC_API_KEY", "stub-key"),
 		DatabaseURL:         env("DATABASE_URL", ""),
 		RedisURL:            env("REDIS_URL", "redis://localhost:6379"),
+		QueueDriver:         env("QUEUE_DRIVER", "inprocess"),
+		RedisAddr:           env("REDIS_ADDR", "127.0.0.1:6379"),
 	}
 }
 

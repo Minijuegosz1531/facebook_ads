@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
@@ -58,17 +57,13 @@ func (h *Handler) startInspiration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Run the heavy pipeline in the background. We use context.Background()
-	// (NOT r.Context()) because the request context is cancelled as soon as we
-	// return the 202 below — using it would cancel the pipeline immediately.
-	// In production this enqueues an arq/Redis job instead of a goroutine.
-	go func() {
-		if _, err := svc.RunCommand(context.Background(), cmd); err != nil {
-			// The error is already recorded on the job (status=failed); the
-			// frontend sees it via polling.
-			_ = err
-		}
-	}()
+	// Hand the heavy work to the configured enqueuer: a goroutine in-process
+	// (dev) or a Redis/asynq task consumed by cmd/worker (production). Either
+	// way the analyst gets an immediate 202 and polls the job for progress.
+	if err := h.container.Enqueuer().EnqueueInspiration(r.Context(), cmd); err != nil {
+		writeError(w, err)
+		return
+	}
 
 	writeJSON(w, http.StatusAccepted, toJobResponse(job))
 }

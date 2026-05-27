@@ -5,21 +5,21 @@
 package infrastructure
 
 import (
+	"github.com/minijuegosz1531/facebook_ads/apps/api-go/internal/adapter/outbound/queue"
+	"github.com/minijuegosz1531/facebook_ads/apps/api-go/internal/adapter/outbound/redisstore"
 	"github.com/minijuegosz1531/facebook_ads/apps/api-go/internal/adapter/outbound/stub"
 	"github.com/minijuegosz1531/facebook_ads/apps/api-go/internal/application"
 	"github.com/minijuegosz1531/facebook_ads/apps/api-go/internal/config"
 	"github.com/minijuegosz1531/facebook_ads/apps/api-go/internal/domain/port"
 )
 
-// Container holds the singleton adapters shared across requests and builds the
-// per-use-case services on demand.
+// Container holds the singleton adapters and services shared across the app.
 //
 // # Pattern: Factory / Composition Root
 //
 // The Container is the application's composition root: a single factory that
-// decides which concrete adapter implements each port. Today every builder
-// returns a stub; switching to production means returning the real adapter when
-// cfg.UseStubs is false (the //nolint comments mark where they'd plug in).
+// decides which concrete adapter implements each port. The choice is driven by
+// config (UseStubs, QueueDriver) — callers never see a concrete type.
 type Container struct {
 	Cfg config.Config
 
@@ -30,9 +30,12 @@ type Container struct {
 	imageGen     port.ImageGenerator
 	copyGen      port.CopyGenerator
 	storage      port.Storage
+
+	inspiration *application.InspirationService
+	enqueuer    application.Enqueuer
 }
 
-// NewContainer builds the container and its singleton adapters from config.
+// NewContainer builds the container and its singletons from config.
 func NewContainer(cfg config.Config) *Container {
 	c := &Container{Cfg: cfg}
 	c.campaignRepo = c.buildCampaignRepo()
@@ -42,12 +45,16 @@ func NewContainer(cfg config.Config) *Container {
 	c.imageGen = c.buildImageGenerator()
 	c.copyGen = c.buildCopyGenerator()
 	c.storage = c.buildStorage()
+
+	// Build the inspiration service once, then the enqueuer (the in-process
+	// enqueuer needs the service to call RunCommand).
+	c.inspiration = application.NewInspirationService(c.adLibrary, c.imageGen, c.copyGen, c.storage, c.jobStore)
+	c.enqueuer = c.buildEnqueuer()
 	return c
 }
 
 // ── outbound adapter factories ───────────────────────────────────────────────
-// Each returns an interface (the port). The concrete type chosen depends on
-// cfg.UseStubs. Returning the interface keeps callers oblivious to the choice.
+// Each returns an interface (the port). The concrete type depends on config.
 
 func (c *Container) buildCampaignRepo() port.CampaignRepository {
 	// if !c.Cfg.UseStubs { return postgres.NewCampaignRepository(c.Cfg.DatabaseURL) }
@@ -58,8 +65,12 @@ func (c *Container) buildClientRepo() port.ClientRepository {
 	return stub.NewInMemoryClientRepository()
 }
 
+// buildJobStore: with the asynq driver the API and the worker are separate
+// processes, so job state must live in Redis (shared). Otherwise in-memory.
 func (c *Container) buildJobStore() port.JobStore {
-	// if !c.Cfg.UseStubs { return redisadapter.NewJobStore(c.Cfg.RedisURL) }
+	if c.Cfg.UsesAsynq() {
+		return redisstore.NewJobStore(c.Cfg.RedisAddr)
+	}
 	return stub.NewInMemoryJobStore()
 }
 
@@ -83,6 +94,14 @@ func (c *Container) buildStorage() port.Storage {
 	return stub.NewStorage()
 }
 
+// buildEnqueuer chooses how background inspiration jobs run.
+func (c *Container) buildEnqueuer() application.Enqueuer {
+	if c.Cfg.UsesAsynq() {
+		return queue.NewAsynqEnqueuer(c.Cfg.RedisAddr)
+	}
+	return queue.NewInProcess(c.inspiration)
+}
+
 // ── inbound service factories ────────────────────────────────────────────────
 
 // CampaignService builds a campaign service bound to a client's ad account.
@@ -95,10 +114,11 @@ func (c *Container) CampaignService(adAccountID string) *application.CampaignSer
 	return application.NewCampaignService(adPlatform, c.campaignRepo, c.jobStore)
 }
 
-// InspirationService builds the AI pipeline service from the shared adapters.
-func (c *Container) InspirationService() *application.InspirationService {
-	return application.NewInspirationService(c.adLibrary, c.imageGen, c.copyGen, c.storage, c.jobStore)
-}
+// InspirationService returns the shared inspiration service.
+func (c *Container) InspirationService() *application.InspirationService { return c.inspiration }
+
+// Enqueuer returns the configured background-job enqueuer.
+func (c *Container) Enqueuer() application.Enqueuer { return c.enqueuer }
 
 // ClientRepo exposes the client repository for read-only handlers.
 func (c *Container) ClientRepo() port.ClientRepository { return c.clientRepo }
