@@ -1,0 +1,65 @@
+// Prisma schema — mirrors the FastAPI/SQLAlchemy data model. The Python service
+// owns writes at runtime; this schema documents the relational model and can be
+// used by Next.js for read models if needed.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id              String     @id @default(uuid())
+  name            String
+  metaAdAccountId String     @unique
+  metaPageId      String?
+  metaPixelId     String?
+  campaigns       Campaign[]
+  createdAt       DateTime   @default(now())
+}
+
+model Campaign {
+  id             String   @id @default(uuid())
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id])
+  metaCampaignId String?  @unique
+  metaAdsetId    String?
+  name           String
+  objective      String
+  budgetType     String
+  budgetAmount   Int
+  status         String   @default("PAUSED")
+  ads            Ad[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Ad {
+  id             String   @id @default(uuid())
+  campaignId     String
+  campaign       Campaign @relation(fields: [campaignId], references: [id])
+  metaAdId       String?  @unique
+  metaCreativeId String?
+  headline       String
+  body           String
+  imageUrl       String
+  cta            String
+  status         String   @default("PAUSED")
+  createdAt      DateTime @default(now())
+}
+
+model InspirationJob {
+  id                   String   @id @default(uuid())
+  clientId             String
+  keyword              String
+  country              String
+  status               String   @default("pending")
+  referenceAds         Json?
+  generatedImages      String[]
+  generatedCopies      Json?
+  higgsFieldRequestIds String[]
+  createdAt            DateTime @default(now())
+}

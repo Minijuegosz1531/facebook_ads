@@ -1,0 +1,15 @@
+# Runtime (stub mode only needs the first block)
+fastapi==0.128.0
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# External backends (used when USE_STUBS=false)
+sqlalchemy==2.0.50
+asyncpg==0.30.0
+alembic==1.14.0
+redis==5.2.1
+arq==0.26.3
+httpx==0.28.1
+anthropic==0.104.0
+google-cloud-storage==2.19.0
