@@ -51,23 +51,26 @@ adapters/inbound (http, workers) → application → domain/use_cases → domain
 
 ## Frontend — `apps/web`
 
+El frontend usa **pnpm** (campo `packageManager` en `package.json`; con Corepack:
+`corepack enable`).
+
 ```bash
 cd apps/web
-npm install
+pnpm install
 
 # Dev con backend mock en memoria (sin Python):
-MOCK_API=1 npm run dev          # http://localhost:3000
+MOCK_API=1 pnpm dev             # http://localhost:3000
 
 # Apuntando al FastAPI real:
-API_BASE_URL=http://localhost:8000 npm run dev
+API_BASE_URL=http://localhost:8000 pnpm dev
 ```
 
 ### Tests E2E (Playwright)
 
 ```bash
 cd apps/web
-npm run test:e2e:install   # instala Chromium (una vez)
-npm run test:e2e           # levanta `next dev` con MOCK_API=1 y corre los specs
+pnpm test:e2e:install   # instala Chromium (una vez)
+pnpm test:e2e           # levanta `next dev` con MOCK_API=1 y corre los specs
 ```
 
 ### Arquitectura feature-based

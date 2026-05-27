@@ -21,7 +21,7 @@ export default defineConfig({
   ],
   // Run the app standalone with the in-memory mock backend — no Python service.
   webServer: {
-    command: "npm run dev",
+    command: "pnpm dev",
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -17,8 +17,8 @@ green.
   `MOCK_API=1`. `playwright.config.ts` already starts the dev server with that
   env via the `webServer` block — never require the real Python backend to be
   running for E2E.
-- Run tests with `npm run test:e2e` (headless) from `apps/web`. Use
-  `npm run test:e2e -- --ui` only when debugging locally.
+- This app uses **pnpm**. Run tests with `pnpm test:e2e` (headless) from
+  `apps/web`. Use `pnpm test:e2e --ui` only when debugging locally.
 - The base URL is configured in the Playwright config; use `page.goto("/...")`
   with app-relative paths, never hard-coded `http://localhost`.
 
@@ -47,7 +47,7 @@ green.
 2. If a needed element lacks a stable selector, add a `data-testid` to the
    component (small, surgical edit) and use it in the test.
 3. Write or update the spec in `apps/web/e2e/`.
-4. Run `npm run test:e2e` and iterate until green. If a test fails, diagnose
+4. Run `pnpm test:e2e` and iterate until green. If a test fails, diagnose
    whether it's a test bug (bad selector/assumption) or a real app regression —
    say which, and only fix the app if it's clearly a regression and the fix is
    small and unambiguous; otherwise report it.

@@ -2,6 +2,7 @@
   "name": "meta-ads-platform-web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -27,5 +28,8 @@
     "typescript": "^5.7.0",
     "tailwindcss": "^4.3.0",
     "@tailwindcss/postcss": "^4.3.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["sharp"]
   }
 }
