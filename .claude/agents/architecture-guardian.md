@@ -1,6 +1,6 @@
 ---
 name: architecture-guardian
-description: Use PROACTIVELY after writing or editing code in this monorepo to verify it follows the documented architecture — Hexagonal (Ports & Adapters) for apps/api and Feature-based layers for apps/web. Invoke it to review a diff/file for layering violations, dependency-direction breaks, naming-convention drift, or cross-feature imports BEFORE committing. Give it the file paths or the diff to review.
+description: Use PROACTIVELY after writing or editing code in this monorepo to verify it follows the documented architecture — Hexagonal (Ports & Adapters) for apps/api (Python) and apps/api-go (Go), and Feature-based layers for apps/web. Invoke it to review a diff/file for layering violations, dependency-direction breaks, naming-convention drift, or cross-feature imports BEFORE committing. Give it the file paths or the diff to review.
 tools: Read, Bash, Glob, Grep
 model: sonnet
 ---
@@ -51,6 +51,31 @@ Naming conventions:
 - Outbound adapters end in `Adapter` (`HiggsfieldAdapter`, `GCSAdapter`).
 - Use cases end in `UseCase`; their input dataclass ends in `Command`.
 - Application services end in `Service` and implement an inbound port.
+
+### apps/api-go — Hexagonal (Go)
+
+Same hexagonal architecture as apps/api, in idiomatic Go. The dependency rule is
+identical and absolute: `internal/domain/**` must not import `internal/adapter`,
+`internal/application` or `internal/infrastructure`. Verify mechanically:
+
+```
+go list -deps ./internal/domain/... | grep -E 'internal/(adapter|application|infrastructure)'
+# any output = violation
+```
+
+Go-specific rules and idioms (do NOT flag these as drift):
+1. **Ports are interfaces in `internal/domain/port`**, named WITHOUT an `I`
+   prefix (`AdPlatform`, not `IAdPlatform`) — that is the Go convention.
+2. **Interfaces are satisfied implicitly**; there is no "implements" keyword, so
+   check that an adapter has the right method set, not a declaration.
+3. **Use cases depend only on `port` + `model`.** A file in `internal/domain/usecase`
+   importing `internal/adapter/**` or `internal/application` is a violation.
+4. **Concrete adapters are constructed only in `internal/infrastructure/container.go`**
+   (the composition root) and `cmd/api/main.go`.
+5. **Handlers contain no business logic** — `internal/adapter/inbound/http`
+   decodes/encodes and delegates to an application service.
+6. Every exported type/func should have a doc comment (this app is a study
+   reference); flag missing godoc on exported identifiers.
 
 ### apps/web — Feature-based with layers
 

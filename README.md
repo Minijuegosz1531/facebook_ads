@@ -6,6 +6,7 @@ Facebook/Instagram con asistencia de IA. Monorepo con dos aplicaciones:
 | App | Stack | Arquitectura |
 |---|---|---|
 | `apps/api` | FastAPI · Python 3.13 · SQLAlchemy 2 async · arq · Redis | **Hexagonal** (Ports & Adapters) |
+| `apps/api-go` | Go 1.24 · solo stdlib (`net/http`) | **Hexagonal** — reimplementación de estudio |
 | `apps/web` | Next.js 16 · React 19 · TanStack Query · Zod 4 · Tailwind 4 | **Feature-based** con capas |
 
 El flujo: el analista llena un formulario → la IA extrae keywords, busca en la
@@ -48,6 +49,21 @@ adapters/inbound (http, workers) → application → domain/use_cases → domain
 - Los use cases dependen de ports (interfaces), nunca de adapters.
 - `infrastructure/container.py` es el único lugar que construye adapters
   concretos y elige stub vs. real según `USE_STUBS`.
+
+## Backend (Go) — `apps/api-go`
+
+Reimplementación del microservicio en Go con la misma arquitectura hexagonal,
+pensada como material de estudio del lenguaje. Solo usa la librería estándar.
+
+```bash
+cd apps/api-go
+go run ./cmd/api          # :8080 en modo stub
+go test -race ./...       # tests + detector de data races
+```
+
+Documenta patrones de diseño (Builder, Functional Options, Factory/Composition
+Root, Decorator/Middleware) y el mapeo Python⇄Go. Detalles en
+[`apps/api-go/README.md`](apps/api-go/README.md).
 
 ## Frontend — `apps/web`
 
