@@ -104,12 +104,46 @@ Hard rules — flag ANY of these:
    `types.ts`. Server Actions live under `features/<f>/actions/` and validate
    input with the feature's Zod schema before calling the API client.
 
+### apps/web-angular — Feature-based (Angular 20)
+
+Same feature-based architecture as apps/web, in Angular. The layering and the
+no-cross-feature rule are identical:
+
+```
+src/app/
+  core/       → singletons (ApiClient, interceptors, tokens) — like a cross-cutting kernel
+  shared/     → presentational components, pipes, models
+  features/   → clients/, inspiration/, campaigns/ — each autonomous
+                (data/ = facade services, ui/ = presentational, pages/ = routed smart
+                 components, domain/ = pure logic e.g. builders)
+  layout/     → shell
+```
+
+Hard rules — flag ANY of these:
+
+1. **A feature never imports from another feature.** Cross-feature flows compose
+   at the **route page** (`features/campaigns/pages/new-campaign-page.ts` is the
+   composition root for the wizard). Features still never import each other.
+2. **`core/` and `shared/` never import from `features/`.** Dependencies flow
+   `features → shared/core`, never backward.
+3. **Components touching services are containers (`pages/` or feature widgets).**
+   Components under `ui/` must be presentational: `input()`/`output()` only, no
+   injected facades, `ChangeDetectionStrategy.OnPush`.
+4. **Only the `data/` facades call `ApiClient`.** UI/pages talk to facades, never
+   to `HttpClient`/`ApiClient` directly. Endpoint knowledge stays in `core/api`.
+5. Prefer Angular 20 idioms: standalone components (no NgModules), signals
+   (`signal`/`computed`/`input`/`output`), new control flow (`@if`/`@for`),
+   functional interceptors, lazy `loadComponent` routes. Flag NgModule-based or
+   `*ngIf`/`*ngFor` additions as drift.
+
 ## Stack invariants (flag drift)
 
 - API: Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2.0 async, arq for jobs,
   Redis for job state. NOT Celery/RQ/BullMQ.
 - Web: Next.js 16 App Router, React 19, TypeScript, Zod v4, TanStack Query,
   Tailwind 4, shadcn/ui.
+- Web (Angular): Angular 20, standalone components, signals, Reactive Forms,
+  Tailwind 4. NOT NgModules, NOT legacy `*ngIf`/`*ngFor`.
 - All Meta objects are created in `PAUSED` state.
 - Job state for inspiration lives in Redis (short-lived), not Postgres.
 

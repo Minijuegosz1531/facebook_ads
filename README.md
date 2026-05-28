@@ -8,6 +8,7 @@ Facebook/Instagram con asistencia de IA. Monorepo con dos aplicaciones:
 | `apps/api` | FastAPI · Python 3.13 · SQLAlchemy 2 async · arq · Redis | **Hexagonal** (Ports & Adapters) |
 | `apps/api-go` | Go 1.24 · solo stdlib (`net/http`) | **Hexagonal** — reimplementación de estudio |
 | `apps/web` | Next.js 16 · React 19 · TanStack Query · Zod 4 · Tailwind 4 | **Feature-based** con capas |
+| `apps/web-angular` | Angular 20 · signals · standalone · Reactive Forms · Tailwind 4 | **Feature-based** — frontend de estudio |
 
 El flujo: el analista llena un formulario → la IA extrae keywords, busca en la
 Ad Library, genera 5 imágenes (Higgsfield) y 10 copies (Claude) → el analista
@@ -64,6 +65,21 @@ go test -race ./...       # tests + detector de data races
 Documenta patrones de diseño (Builder, Functional Options, Factory/Composition
 Root, Decorator/Middleware) y el mapeo Python⇄Go. Detalles en
 [`apps/api-go/README.md`](apps/api-go/README.md).
+
+## Frontend (Angular) — `apps/web-angular`
+
+Reimplementación del frontend en Angular 20 (signals, standalone, lazy loading)
+como material de estudio, con patrones de diseño documentados (Adapter, Facade,
+Builder, Observer, interceptores funcionales). Consume el mismo backend vía el
+proxy de Angular (`proxy.conf.json`), sin mock.
+
+```bash
+cd apps/web-angular
+pnpm install
+pnpm start          # http://localhost:4200 (proxy /api → http://localhost:8000)
+```
+
+Detalles y mapeo Next.js⇄Angular en [`apps/web-angular/README.md`](apps/web-angular/README.md).
 
 ## Frontend — `apps/web`
 
