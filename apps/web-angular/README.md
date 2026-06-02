@@ -54,6 +54,8 @@ ruta** (`features/campaigns/pages/new-campaign-page.ts`), el composition root.
 
 ## Patrones de diseño en el código (para estudiar)
 
+> Catálogo completo con rutas exactas (Go + Angular): [`../../docs/patterns.md`](../../docs/patterns.md).
+
 - **Adapter / Gateway** — `core/api/api-client.ts`: envuelve `HttpClient` en una
   API tipada que habla el dominio (clients, campaigns, jobs). Emite paths
   relativos; el host lo resuelve el interceptor.
