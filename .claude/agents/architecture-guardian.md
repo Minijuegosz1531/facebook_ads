@@ -1,6 +1,6 @@
 ---
 name: architecture-guardian
-description: Use PROACTIVELY after writing or editing code in this monorepo to verify it follows the documented architecture — Hexagonal (Ports & Adapters) for apps/api (Python) and apps/api-go (Go), and Feature-based layers for apps/web. Invoke it to review a diff/file for layering violations, dependency-direction breaks, naming-convention drift, or cross-feature imports BEFORE committing. Give it the file paths or the diff to review.
+description: Use PROACTIVELY after writing or editing code in this monorepo to verify it follows the documented architecture — Hexagonal (Ports & Adapters) for apps/api (Python), apps/api-go (Go) and apps/api-nest (NestJS), and Feature-based layers for apps/web and apps/web-angular. Invoke it to review a diff/file for layering violations, dependency-direction breaks, naming-convention drift, or cross-feature imports BEFORE committing. Give it the file paths or the diff to review.
 tools: Read, Bash, Glob, Grep
 model: sonnet
 ---
@@ -76,6 +76,34 @@ Go-specific rules and idioms (do NOT flag these as drift):
    decodes/encodes and delegates to an application service.
 6. Every exported type/func should have a doc comment (this app is a study
    reference); flag missing godoc on exported identifiers.
+
+### apps/api-nest — Hexagonal (NestJS)
+
+Same hexagonal architecture as apps/api, in idiomatic NestJS + TypeScript. The
+dependency rule is identical: `src/domain/**` must not import from
+`src/adapters`, `src/application`, `src/infrastructure` or any framework other
+than `@nestjs/common` (used only for the `@Injectable`/`@Inject` decorators on
+use cases). No `express`, no SDK, no DB driver in `src/domain/**`.
+
+NestJS-specific rules and idioms (do NOT flag these as drift):
+1. **Ports are TS interfaces in `src/domain/ports/*.port.ts`**, each paired with
+   a `Symbol` token (`export const AD_PLATFORM = Symbol('AdPlatformPort')`).
+   Interfaces disappear at runtime — the Symbol is the DI key.
+2. **Use cases are `@Injectable()` classes** that inject ports with
+   `@Inject(TOKEN)`. They live in `src/domain/use-cases/` and depend only on
+   ports + models.
+3. **The ONLY place that knows concrete adapters is
+   `src/infrastructure/ports.module.ts`** (`@Global()`), via `useClass` /
+   `useFactory`. Adding a real adapter is a one-line change there.
+4. **Controllers (`src/adapters/inbound/http/controllers/*`) are thin**: validate
+   via DTO + `ValidationPipe`, call an application service, map to wire shape
+   with the helpers in `mappers/`. No business logic, no direct port access.
+5. **Domain errors travel as `DomainError` subclasses** (`NotFoundError`,
+   `ValidationError`, …) and are mapped to HTTP status codes ONLY by
+   `DomainExceptionFilter`. Controllers should NOT throw `HttpException`
+   directly for domain-level failures.
+6. Wire shapes are **snake_case** in DTOs and mappers to stay compatible with
+   the Python and Go services; internal models stay camelCase.
 
 ### apps/web — Feature-based with layers
 

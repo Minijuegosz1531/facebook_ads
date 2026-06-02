@@ -7,6 +7,7 @@ Facebook/Instagram con asistencia de IA. Monorepo con dos aplicaciones:
 |---|---|---|
 | `apps/api` | FastAPI · Python 3.13 · SQLAlchemy 2 async · arq · Redis | **Hexagonal** (Ports & Adapters) |
 | `apps/api-go` | Go 1.24 · solo stdlib (`net/http`) | **Hexagonal** — reimplementación de estudio |
+| `apps/api-nest` | NestJS 11 · TypeScript · class-validator | **Hexagonal** — reimplementación de estudio |
 | `apps/web` | Next.js 16 · React 19 · TanStack Query · Zod 4 · Tailwind 4 | **Feature-based** con capas |
 | `apps/web-angular` | Angular 20 · signals · standalone · Reactive Forms · Tailwind 4 | **Feature-based** — frontend de estudio |
 
@@ -68,6 +69,21 @@ go test -race ./...       # tests + detector de data races
 Documenta patrones de diseño (Builder, Functional Options, Factory/Composition
 Root, Decorator/Middleware) y el mapeo Python⇄Go. Detalles en
 [`apps/api-go/README.md`](apps/api-go/README.md).
+
+## Backend (NestJS) — `apps/api-nest`
+
+Reimplementación en NestJS 11 + TypeScript con la misma arquitectura hexagonal,
+aprovechando los idiomas de Nest: módulos, decoradores, DI por símbolo, pipes,
+filtros e interceptores. Runnable en modo stub.
+
+```bash
+cd apps/api-nest
+pnpm install
+pnpm start:dev               # :8080
+pnpm test && pnpm test:e2e
+```
+
+Detalles y mapeo Python⇄Go⇄NestJS en [`apps/api-nest/README.md`](apps/api-nest/README.md).
 
 ## Frontend (Angular) — `apps/web-angular`
 

@@ -1,7 +1,8 @@
 # Patrones de diseño usados en el proyecto
 
-Catálogo de los patrones aplicados en la API en Go (`apps/api-go/`) y el
-frontend en Angular (`apps/web-angular/`). Cada entrada cubre:
+Catálogo de los patrones aplicados en la API en Go (`apps/api-go/`), la API en
+NestJS (`apps/api-nest/`) y el frontend en Angular (`apps/web-angular/`). Cada
+entrada cubre:
 
 - **Problema** — la dolencia que el patrón cura.
 - **Cuándo agregarlo** — señales que te indican que conviene usarlo.
@@ -140,6 +141,78 @@ La regla la verifica el subagente `architecture-guardian` (`.claude/agents/archi
 
 ---
 
+## Patrones en NestJS — `apps/api-nest/`
+
+> Casi todos los patrones de Go aplican igual (Hexagonal, Use Cases, Command,
+> Builder, Repository, Adapter, Facade, Singleton). Aquí se listan los que Nest
+> codifica con sus propias primitivas y los que aparecen específicamente en su
+> versión del código.
+
+### Composition Root con NestJS Module + Provider Factory
+
+- **Problema:** el cableado de adapters concretos se desparrama por la app; cambiar uno requiere tocar varios sitios.
+- **Cuándo agregarlo:** siempre que uses Nest — los módulos SON el composition root del framework.
+- **Cuándo NO:** scripts puntuales sin DI; en una app Nest no aplica el "no".
+- **Dónde:** `src/infrastructure/ports.module.ts` (`@Global()` con `useClass` por port). Cambiar a real es cambiar la implementación en `useClass` o pasar a `useFactory`.
+
+### DI por símbolo (interfaces no son runtime)
+
+- **Problema:** TypeScript borra las interfaces en runtime, así que Nest no puede usarlas como llaves de inyección.
+- **Cuándo agregarlo:** cada vez que inyectes una interfaz (`Port`) en lugar de una clase concreta.
+- **Cuándo NO:** si inyectas una clase concreta, el constructor solo necesita el tipo de la clase — Nest la resuelve sin tokens extra.
+- **Dónde:** cada `*.port.ts` exporta su token (`export const AD_PLATFORM = Symbol('AdPlatformPort')`). Consumo: `@Inject(AD_PLATFORM) private p: AdPlatformPort` en cada use case.
+
+### Provider Factory (`useFactory` / `useClass` / `useValue`)
+
+- **Problema:** elegir la implementación de un provider en función de configuración o de otros providers.
+- **Cuándo agregarlo:** `useFactory` cuando la elección depende de `ConfigService` (stub vs. real); `useValue` para constantes/tokens; `useClass` para el caso simple.
+- **Cuándo NO:** un `useClass` resuelve el 80% — no compliques con factories si no dependes de runtime config.
+- **Dónde:** `src/infrastructure/ports.module.ts` (hoy todo `useClass`, el comentario muestra dónde entraría `useFactory`); `src/app.module.ts` registra `APP_FILTER`/`APP_INTERCEPTOR` con `useClass`.
+
+### Pipe + class-validator (Validation Pipe)
+
+- **Problema:** validar manualmente cada payload en cada controller es repetitivo y propenso a errores.
+- **Cuándo agregarlo:** cualquier endpoint con body/params/query no triviales — declara validación en el DTO y olvídate.
+- **Cuándo NO:** endpoint que NO recibe payload (un `GET` sin params); no instancies un pipe ad-hoc para nada.
+- **Dónde:** `ValidationPipe` global en `src/main.ts`; reglas en los DTOs `src/adapters/inbound/http/dto/*.dto.ts` (`@IsString`, `@Length`, `@IsIn`, …).
+
+### Exception Filter (mapeo de errores)
+
+- **Problema:** los controllers terminan con `try/catch` repetidos para traducir errores de dominio a HTTP.
+- **Cuándo agregarlo:** tienes 2+ tipos de error que mapean a status codes distintos.
+- **Cuándo NO:** un solo tipo de error trivial — un `HttpException` desde el controller alcanza.
+- **Dónde:** `src/adapters/inbound/http/filters/domain-exception.filter.ts` (`@Catch(DomainError)`). Registro global: `app.module.ts` → `APP_FILTER`.
+
+### Interceptor (Decorator / Around-advice)
+
+- **Problema:** lógica transversal (logs, métricas, cache, transformaciones de respuesta) replicada en cada handler.
+- **Cuándo agregarlo:** comportamiento que aplica a varios handlers, ideal pre/post-call.
+- **Cuándo NO:** lógica específica de un handler; mejor en el método del controller. Tampoco para validación → eso es un Pipe.
+- **Dónde:** `src/adapters/inbound/http/interceptors/logging.interceptor.ts` (logs método/path/status/latencia). Registro global: `app.module.ts` → `APP_INTERCEPTOR`.
+
+### Decoradores como pegamento
+
+- **Problema:** la configuración por convención (qué es un controller, qué es un provider, dónde montar una ruta) escrita a mano es ceremonia.
+- **Cuándo agregarlo:** ya estás en Nest — usar `@Controller`, `@Injectable`, `@Module`, `@Inject`, `@Get/@Post/@Patch`, `@Body`, `@Param`, `@Query`, `@Catch`, `@Global` es lo idiomático.
+- **Cuándo NO:** no inventes decoradores propios sin necesidad; Nest ya cubre lo común.
+- **Dónde:** repartidos por toda la app; ejemplos densos en cualquier controller (`adapters/inbound/http/controllers/`) y en cualquier use case (`domain/use-cases/`).
+
+### Concurrencia con `Promise.all`
+
+- **Problema:** llamadas asíncronas independientes ejecutadas en serie suman latencias.
+- **Cuándo agregarlo:** ≥2 promesas independientes — el tiempo total cae al máximo de las dos.
+- **Cuándo NO:** una depende del resultado de la otra; el orden importa; una es tan barata que el costo de coordinar no se paga.
+- **Dónde:** `src/domain/use-cases/generate-inspiration.use-case.ts` — `await Promise.all([imageGen.generate(...), copyGen.generateCopies(...)])`.
+
+### Background work (fire-and-forget)
+
+- **Problema:** el cliente HTTP no puede esperar 30s mientras el pipeline corre.
+- **Cuándo agregarlo:** trabajo no bloqueante que el cliente consultará por polling u otro canal.
+- **Cuándo NO:** trabajo crítico que NO puede perderse (caída del proceso = job perdido) — para eso usa una cola persistente (Bull/BullMQ).
+- **Dónde:** `src/application/inspiration.service.ts` → `startAndRun` lanza `void this.generate.execute(cmd).catch(...)` y devuelve 202.
+
+---
+
 ## Patrones en Angular — `apps/web-angular/`
 
 ### Adapter / Gateway (`ApiClient`)
@@ -270,18 +343,23 @@ La regla la verifica el subagente `architecture-guardian` (`.claude/agents/archi
 
 ---
 
-## Patrones que aparecen en ambos (para comparar idiomas)
+## Patrones que aparecen en varias apps (para comparar idiomas)
 
-| Pattern | Go | Angular |
-|---|---|---|
-| Adapter | `internal/adapter/outbound/queue/asynq_enqueuer.go`, `redisstore/job_store.go`, `stub/*.go` | `core/api/api-client.ts` |
-| Facade | `internal/application/{campaign,inspiration}_service.go` | `features/*/data/*.service.ts` |
-| Builder | `internal/domain/model/campaign_builder.go`, `stub/image_generator.go` (`AdPromptBuilder`) | `features/campaigns/domain/publish-request.builder.ts` |
-| Strategy (selección por config) | `internal/infrastructure/container.go` (`buildEnqueuer`, `buildJobStore`) | `core/api/api-config.ts` (`API_BASE_PATH`, sustituible vía DI) |
-| Composition Root | `cmd/api/main.go` + `cmd/worker/main.go` + `Container` | `pages/new-campaign-page.ts` (ruta), `app.config.ts` (DI) |
-| Observer / reactivo | `sync.WaitGroup` (fan-out paralelo) | signals + RxJS `interval`/`switchMap`/`takeWhile` |
-| DI por constructor | `NewXxx(deps...)` | `inject(Service)` en clases/funciones |
-| Singleton | campos del `Container` | `@Injectable({ providedIn: 'root' })` |
+| Pattern | Go (`api-go`) | NestJS (`api-nest`) | Angular (`web-angular`) |
+|---|---|---|---|
+| Adapter | `internal/adapter/outbound/{queue,redisstore,stub}/*` | `src/adapters/outbound/stub/*` | `src/app/core/api/api-client.ts` |
+| Facade | `internal/application/{campaign,inspiration}_service.go` | `src/application/{campaigns,inspiration}.service.ts` | `src/app/features/*/data/*.service.ts` |
+| Builder | `internal/domain/model/campaign_builder.go`, `stub/image_generator.go` (`AdPromptBuilder`) | `src/domain/models/campaign.builder.ts`, `stub-image-generator.ts` (`AdPromptBuilder`) | `src/app/features/campaigns/domain/publish-request.builder.ts` |
+| Command DTO | `internal/domain/usecase/*Command` | `src/domain/use-cases/*Command` (interfaces) | — (no aplica: Reactive Forms cumple el rol) |
+| Composition Root | `cmd/api/main.go` + `Container` | `src/infrastructure/ports.module.ts` + `app.module.ts` | `pages/new-campaign-page.ts` (ruta), `app.config.ts` (DI) |
+| Strategy (selección por config) | `internal/infrastructure/container.go` (`buildEnqueuer`, `buildJobStore`) | `useFactory` en `PortsModule` (cuando se active) | `core/api/api-config.ts` (`API_BASE_PATH` reemplazable vía DI) |
+| DI por constructor | `NewXxx(deps...)` | `@Inject(TOKEN)` + Nest container | `inject(Service)` en clases/funciones |
+| Singleton | campos del `Container` | `@Injectable()` provisto por un módulo (instancia única) | `@Injectable({ providedIn: 'root' })` |
+| Concurrencia paralela | `sync.WaitGroup` (fan-out) | `await Promise.all([...])` | signals + RxJS `interval`/`switchMap`/`takeWhile` |
+| Background work | goroutine + `context.Background()`; o `asynq` worker aparte | fire-and-forget `void promise.catch(...)`; o Bull/BullMQ | (no aplica en cliente) |
+| Logging transversal | `withLogging` middleware (`func(http.Handler) http.Handler`) | `LoggingInterceptor` (`NestInterceptor`) | (no aplica en cliente) |
+| Mapeo errores → HTTP | `writeError` + sentinels + `errors.Is` | `DomainExceptionFilter` (`@Catch(DomainError)`) | (HTTP errors → toast vía interceptor) |
+| Validación de input | reglas a mano en handlers | `ValidationPipe` global + `class-validator` DTOs | Reactive Forms + `Validators` |
 
 ---
 
