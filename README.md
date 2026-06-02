@@ -26,6 +26,39 @@ Redis) tienen implementaciones **stub** deterministas. Con `USE_STUBS=true`
 (API) y `MOCK_API=1` (web) todo corre end-to-end **sin credenciales ni
 servicios externos** — así funcionan los tests y el dev local.
 
+## Saltar entre APIs con Docker
+
+Las tres APIs (Python, Go, NestJS) se exponen en **el mismo puerto** (8000) vía
+perfiles de Compose, así que el frontend siempre apunta a `localhost:8000` y
+solo cambias cuál backend está activo:
+
+```bash
+make python        # FastAPI       — modo stub (1 contenedor)
+make go            # Go API        — modo stub (1 contenedor)
+make nest          # NestJS        — modo stub (1 contenedor)
+
+make python-full   # FastAPI + Postgres + Redis + arq worker
+make go-full       # Go API + Redis + asynq worker
+
+make down          # detiene todo
+make logs          # logs en vivo
+make status        # qué hay corriendo
+```
+
+Cada `make <api>` primero detiene lo que esté corriendo y luego levanta el
+perfil elegido (solo un API a la vez — todos compiten por el puerto 8000).
+
+Equivalente sin Make:
+
+```bash
+docker compose --profile python up --build -d
+docker compose --profile go     up --build -d
+docker compose --profile nest   up --build -d
+docker compose down
+```
+
+Detalles en [`docker-compose.yml`](docker-compose.yml) y [`Makefile`](Makefile).
+
 ## Backend — `apps/api`
 
 ```bash

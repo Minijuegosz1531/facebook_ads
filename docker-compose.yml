@@ -1,6 +1,27 @@
+# Unified compose for switching between the three API implementations.
+#
+# Each backend runs as a separate profile and exposes the SAME host port
+# (8000), so the frontends (apps/web, apps/web-angular) can point to
+# http://localhost:8000 regardless of which one is active.
+#
+#   docker compose --profile python up --build       # FastAPI (stub mode)
+#   docker compose --profile go     up --build       # Go      (stub mode)
+#   docker compose --profile nest   up --build       # NestJS  (stub mode)
+#
+#   docker compose down                              # stop everything
+#
+# "Full" profiles add the supporting services for the real (non-stub) paths:
+#
+#   docker compose --profile python-full up --build  # FastAPI + Postgres + Redis + arq worker
+#   docker compose --profile go-full     up --build  # Go API + Redis + asynq worker
+#
+# Only one API profile should be active at a time (they all bind host port 8000).
+
 services:
+  # ─────────────────────────── shared infrastructure ───────────────────────
   postgres:
     image: postgres:16
+    profiles: ["python-full"]
     environment:
       POSTGRES_USER: metaads
       POSTGRES_PASSWORD: metaads
@@ -17,6 +38,7 @@ services:
 
   redis:
     image: redis:8
+    profiles: ["python-full", "go-full"]
     ports:
       - "6379:6379"
     healthcheck:
@@ -25,16 +47,27 @@ services:
       timeout: 3s
       retries: 5
 
-  api:
+  # ─────────────────────────── API: Python / FastAPI ───────────────────────
+  api-python:
+    profiles: ["python"]
+    build: ./apps/api
+    environment:
+      USE_STUBS: "true"
+      PORT: "8000"
+      BASE_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
+
+  api-python-full:
+    profiles: ["python-full"]
     build: ./apps/api
     environment:
       USE_STUBS: "false"
+      PORT: "8000"
       DATABASE_URL: postgresql+asyncpg://metaads:metaads@postgres:5432/metaads
       REDIS_URL: redis://redis:6379
       BASE_URL: http://localhost:8000
       ENVIRONMENT: development
-    env_file:
-      - .env
     ports:
       - "8000:8000"
     depends_on:
@@ -42,20 +75,64 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
 
-  worker:
+  worker-python:
+    profiles: ["python-full"]
     build: ./apps/api
     environment:
       USE_STUBS: "false"
       DATABASE_URL: postgresql+asyncpg://metaads:metaads@postgres:5432/metaads
       REDIS_URL: redis://redis:6379
-    env_file:
-      - .env
     depends_on:
       redis:
         condition: service_healthy
-    command: arq adapters.inbound.workers.worker_inspiration.WorkerSettings
+    command: ["arq", "adapters.inbound.workers.worker_inspiration.WorkerSettings"]
+
+  # ─────────────────────────── API: Go ─────────────────────────────────────
+  api-go:
+    profiles: ["go"]
+    build: ./apps/api-go
+    environment:
+      ADDR: ":8000"
+      QUEUE_DRIVER: "inprocess"
+      BASE_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
+
+  api-go-full:
+    profiles: ["go-full"]
+    build: ./apps/api-go
+    environment:
+      ADDR: ":8000"
+      QUEUE_DRIVER: "asynq"
+      REDIS_ADDR: "redis:6379"
+      BASE_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker-go:
+    profiles: ["go-full"]
+    build: ./apps/api-go
+    entrypoint: ["/worker"]
+    environment:
+      QUEUE_DRIVER: "asynq"
+      REDIS_ADDR: "redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ─────────────────────────── API: NestJS ─────────────────────────────────
+  api-nest:
+    profiles: ["nest"]
+    build: ./apps/api-nest
+    environment:
+      PORT: "8000"
+      BASE_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
 
 volumes:
   pgdata:
