@@ -26,34 +26,51 @@ Redis) tienen implementaciones **stub** deterministas. Con `USE_STUBS=true`
 (API) y `MOCK_API=1` (web) todo corre end-to-end **sin credenciales ni
 servicios externos** — así funcionan los tests y el dev local.
 
-## Saltar entre APIs con Docker
+## Saltar entre APIs (y webs) con Docker
 
-Las tres APIs (Python, Go, NestJS) se exponen en **el mismo puerto** (8000) vía
-perfiles de Compose, así que el frontend siempre apunta a `localhost:8000` y
-solo cambias cuál backend está activo:
+Las tres APIs se exponen en **el mismo puerto** (8000) y comparten el alias de
+red `api`, así que las webs siempre apuntan a la API activa sin cambiar nada.
 
 ```bash
-make python        # FastAPI       — modo stub (1 contenedor)
-make go            # Go API        — modo stub (1 contenedor)
-make nest          # NestJS        — modo stub (1 contenedor)
+# APIs (una a la vez — todas compiten por el puerto 8000):
+make python        # FastAPI                · localhost:8000
+make go            # Go API                  · localhost:8000
+make nest          # NestJS                  · localhost:8000
 
 make python-full   # FastAPI + Postgres + Redis + arq worker
 make go-full       # Go API + Redis + asynq worker
+
+# Webs (independientes, conviven con cualquier API):
+make web           # Next.js (prod build)    · localhost:3000
+make web-angular   # Angular (nginx)         · localhost:4200
 
 make down          # detiene todo
 make logs          # logs en vivo
 make status        # qué hay corriendo
 ```
 
-Cada `make <api>` primero detiene lo que esté corriendo y luego levanta el
-perfil elegido (solo un API a la vez — todos compiten por el puerto 8000).
+**Combinaciones reales** — la API y la web son ortogonales:
+
+```bash
+make python && make web              # FastAPI + Next.js
+make go     && make web-angular      # Go API + Angular
+make nest   && make web              # NestJS + Next.js
+make python && make web && make web-angular   # los tres a la vez
+```
+
+Cada `make <api>` solo detiene **otras APIs** (mantiene las webs vivas), y cada
+`make <web>` solo detiene **otras webs** (mantiene la API). Internamente:
+- Los tres `api-*` services declaran `aliases: [api]` en la red de compose.
+- La web Angular sirve con nginx y proxea `/api/*` → `http://api:8000` (ver
+  [`apps/web-angular/nginx.conf`](apps/web-angular/nginx.conf)).
+- La web Next.js usa `API_BASE_URL=http://api:8000` para que las route handlers
+  proxeen al backend en lugar de ir al mock.
 
 Equivalente sin Make:
 
 ```bash
 docker compose --profile python up --build -d
-docker compose --profile go     up --build -d
-docker compose --profile nest   up --build -d
+docker compose --profile web    up --build -d
 docker compose down
 ```
 

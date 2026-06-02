@@ -1,21 +1,34 @@
-# Unified compose for switching between the three API implementations.
+# Unified compose for switching between the three API implementations and the
+# two frontends.
 #
-# Each backend runs as a separate profile and exposes the SAME host port
-# (8000), so the frontends (apps/web, apps/web-angular) can point to
-# http://localhost:8000 regardless of which one is active.
+# All three APIs expose the SAME host port (8000) AND share the docker network
+# alias `api`, so the frontends always talk to `http://api:8000` regardless of
+# which backend is active. The host port matters for `pnpm dev`/curl; the alias
+# matters for the dockerized frontends.
 #
-#   docker compose --profile python up --build       # FastAPI (stub mode)
-#   docker compose --profile go     up --build       # Go      (stub mode)
-#   docker compose --profile nest   up --build       # NestJS  (stub mode)
+# APIs (one at a time, they all bind host port 8000):
 #
-#   docker compose down                              # stop everything
+#   docker compose --profile python up --build       # FastAPI       (stub)
+#   docker compose --profile go     up --build       # Go API        (stub)
+#   docker compose --profile nest   up --build       # NestJS        (stub)
 #
-# "Full" profiles add the supporting services for the real (non-stub) paths:
+# Frontends (run IN PARALLEL with any API):
 #
-#   docker compose --profile python-full up --build  # FastAPI + Postgres + Redis + arq worker
-#   docker compose --profile go-full     up --build  # Go API + Redis + asynq worker
+#   docker compose --profile web         up --build  # Next.js  → :3000
+#   docker compose --profile web-angular up --build  # Angular → :4200
 #
-# Only one API profile should be active at a time (they all bind host port 8000).
+# Full backend stacks (with Postgres/Redis/workers):
+#
+#   docker compose --profile python-full up --build
+#   docker compose --profile go-full     up --build
+#
+# Stop everything:
+#
+#   docker compose --profile python --profile go --profile nest \
+#                  --profile python-full --profile go-full \
+#                  --profile web --profile web-angular down
+#
+# The Makefile wraps the above as `make python`, `make web`, `make down`, etc.
 
 services:
   # ─────────────────────────── shared infrastructure ───────────────────────
@@ -57,6 +70,9 @@ services:
       BASE_URL: http://localhost:8000
     ports:
       - "8000:8000"
+    networks:
+      default:
+        aliases: ["api"]
 
   api-python-full:
     profiles: ["python-full"]
@@ -70,6 +86,9 @@ services:
       ENVIRONMENT: development
     ports:
       - "8000:8000"
+    networks:
+      default:
+        aliases: ["api"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,6 +117,9 @@ services:
       BASE_URL: http://localhost:8000
     ports:
       - "8000:8000"
+    networks:
+      default:
+        aliases: ["api"]
 
   api-go-full:
     profiles: ["go-full"]
@@ -109,6 +131,9 @@ services:
       BASE_URL: http://localhost:8000
     ports:
       - "8000:8000"
+    networks:
+      default:
+        aliases: ["api"]
     depends_on:
       redis:
         condition: service_healthy
@@ -133,6 +158,32 @@ services:
       BASE_URL: http://localhost:8000
     ports:
       - "8000:8000"
+    networks:
+      default:
+        aliases: ["api"]
+
+  # ─────────────────────────── Web: Next.js ────────────────────────────────
+  # Production build (standalone output). Speaks to whichever API has the
+  # network alias `api`. Start an API profile first; this can run alongside it.
+  web:
+    profiles: ["web"]
+    build: ./apps/web
+    environment:
+      # The Next route handlers proxy to this URL for non-mock mode.
+      API_BASE_URL: "http://api:8000"
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "3000:3000"
+
+  # ─────────────────────────── Web: Angular ────────────────────────────────
+  # Static build served by nginx; /api/* is reverse-proxied to the API alias
+  # (see apps/web-angular/nginx.conf).
+  web-angular:
+    profiles: ["web-angular"]
+    build: ./apps/web-angular
+    ports:
+      - "4200:4200"
 
 volumes:
   pgdata:

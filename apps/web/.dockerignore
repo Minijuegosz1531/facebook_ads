@@ -1,0 +1,15 @@
+node_modules
+.next
+.next/cache
+dist
+out
+.git
+.gitignore
+.env.local
+*.local
+playwright-report
+test-results
+e2e
+README.md
+Dockerfile
+.dockerignore
