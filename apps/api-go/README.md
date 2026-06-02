@@ -75,7 +75,10 @@ go list -deps ./internal/domain/usecase | grep -E 'adapter|application|infrastru
 
 ## Patrones de diseño en el código (para estudiar)
 
-> Catálogo completo con rutas exactas (Go + Angular): [`../../docs/patterns.md`](../../docs/patterns.md).
+> Guía de **arquitectura por capas** específica de esta app:
+> [`../../docs/architecture/api-go.md`](../../docs/architecture/api-go.md).
+> Catálogo completo de **patrones** con rutas exactas:
+> [`../../docs/patterns.md`](../../docs/patterns.md).
 
 - **Ports & Adapters (Hexagonal)** — `domain/port` define interfaces; los
   adapters (`adapter/outbound/stub`) las implementan; los use cases dependen solo

@@ -11,8 +11,9 @@ Facebook/Instagram con asistencia de IA. Monorepo con dos aplicaciones:
 | `apps/web` | Next.js 16 · React 19 · TanStack Query · Zod 4 · Tailwind 4 | **Feature-based** con capas |
 | `apps/web-angular` | Angular 20 · signals · standalone · Reactive Forms · Tailwind 4 | **Feature-based** — frontend de estudio |
 
-> 📚 Catálogo completo de **patrones de diseño** usados en Go y Angular (con
-> rutas de archivo): [`docs/patterns.md`](docs/patterns.md).
+> 📚 Documentación de arquitectura **por app** (capas, funciones, decisiones):
+> [`docs/architecture/`](docs/architecture/). Catálogo de **patrones de diseño**
+> con rutas de archivo: [`docs/patterns.md`](docs/patterns.md).
 
 El flujo: el analista llena un formulario → la IA extrae keywords, busca en la
 Ad Library, genera 5 imágenes (Higgsfield) y 10 copies (Claude) → el analista

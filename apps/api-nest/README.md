@@ -45,7 +45,9 @@ apps/api-nest/
 ## Patrones de diseño en el código (para estudiar)
 
 > Catálogo completo y comparativo (Python · Go · Angular · NestJS):
-> [`../../docs/patterns.md`](../../docs/patterns.md).
+> [`../../docs/patterns.md`](../../docs/patterns.md). Y la guía de
+> **arquitectura por capas** específica de esta app:
+> [`../../docs/architecture/api-nest.md`](../../docs/architecture/api-nest.md).
 
 - **Ports & Adapters (Hexagonal)** — interfaces en `domain/ports/*.port.ts` con
   `Symbol` tokens; implementaciones en `adapters/outbound/stub/*`.
