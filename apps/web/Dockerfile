@@ -12,6 +12,10 @@ WORKDIR /app
 RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# `public/` is optional in Next.js. Ensure it exists so the runtime stage's
+# `COPY --from=build /app/public ./public` always finds a directory (empty or
+# not), even on repos that don't ship any static assets.
+RUN mkdir -p public
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
