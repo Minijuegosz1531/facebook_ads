@@ -1,133 +1,148 @@
 ---
 name: hexagonal-api
-description: Crea o extiende una API siguiendo la arquitectura Hexagonal (Ports & Adapters) documentada en el repo. Úsala cuando el usuario quiera agregar un caso de uso, un nuevo port + adapter, un endpoint HTTP, o scaffold de una API nueva en otro lenguaje. Apps de referencia (mirror estructural): apps/api (FastAPI/Python), apps/api-go (Go), apps/api-nest (NestJS).
+description: Build or extend a backend API using the Hexagonal (Ports & Adapters) architecture. Use when the user wants to add a use case, a new port + adapter, an HTTP endpoint, or scaffold a brand-new hexagonal API. Language-agnostic — applies to Python (FastAPI/Flask), Go, NestJS/TypeScript, Java/Kotlin (Spring), Rust (Axum), etc.
 ---
 
-# Skill: crear / extender APIs hexagonales
+# Skill: hexagonal API scaffold / extension
 
-Este repo tiene tres APIs de referencia con la misma arquitectura en distintos
-lenguajes. Esta skill hace cumplir esa arquitectura para todo código nuevo.
+Universal rules + framework-agnostic recipe for backends that follow Hexagonal
+(Ports & Adapters). Adapts to whatever conventions the target repo already has.
 
-## Lee primero (fuente de verdad)
+## Step 0 — Discover the project (always)
 
-Antes de generar archivos, lee EN ORDEN:
+Before generating ANY file:
 
-1. `docs/architecture/README.md` — teoría compartida y decisiones cross-cutting.
-2. `docs/architecture/<app>.md` — guía específica de la app objetivo (`api`, `api-go` o `api-nest`).
-3. `docs/patterns.md` — patrones aplicados, con secciones "Cuándo NO usar".
-4. `.claude/agents/architecture-guardian.md` — reglas que el guardian valida.
+1. Look for existing architecture docs (`docs/architecture/*`, `ARCHITECTURE.md`,
+   `README.md` sections). If found, **read them — their conventions win** over
+   anything in this skill.
+2. Look at one or more existing components in the target codebase (an existing
+   use case, controller, adapter) and copy the **exact** file naming, casing,
+   import style and folder layout. Never invent a layout when one already exists.
+3. Look for `.claude/agents/architecture-guardian.md` (or similar). If present,
+   its rules are the source of truth — this skill's defaults are subordinate.
+4. If NONE of the above exist, use the defaults below.
 
-Si el usuario NO dijo qué app, **PREGUNTA antes de generar** (con
-`AskUserQuestion`). No asumas.
+If the target language/app/folder is ambiguous from the user's message, ASK with
+`AskUserQuestion` before generating.
 
-## Forma del cambio (pregunta si no es claro)
+## Universal layout (default when none exists)
 
-1. **Agregar un caso de uso** (lo más común). Una nueva operación de negocio.
-   → Command DTO + clase del use case + (opcional) nuevo port + cableado en el
-   application service + endpoint HTTP + tests.
-2. **Agregar un port + adapter** (sistema externo nuevo, ej. otro proveedor de IA).
-   → Definir el port en `domain/ports/outbound/`, escribir el **stub** (siempre
-   antes que el real), registrar en el composition root, dejar el adapter real
-   para un follow-up.
-3. **Scaffold de una API nueva en otro lenguaje** (Rust, Kotlin, …).
-   → Espeja la estructura de las tres existentes; no inventes layout.
+```
+src/  (or internal/ in Go, the package root in Python/Java)
+├── domain/
+│   ├── models/       pure entities (data + behavior, no IO)
+│   ├── ports/        interfaces the domain NEEDS from the outside
+│   ├── use_cases/    business logic — orchestrates ports
+│   └── errors/       domain error hierarchy
+├── application/      services (facades) that group use cases
+├── adapters/
+│   ├── inbound/      HTTP controllers, workers — translate the world to the domain
+│   └── outbound/     concrete implementations of the ports (DB, SDKs, queues)
+└── infrastructure/   composition root: wires concrete adapters to ports
+```
 
-## Reglas duras (las hace cumplir el guardian)
+Folder names vary by ecosystem convention. **Match what the project uses.** If
+nothing exists, use the names above.
 
-1. **El dominio no tiene dependencias externas.** Ni HTTP frameworks, ni
-   drivers de BD, ni SDKs. Excepción única: `@Injectable`/`@Inject` de NestJS
-   (son metadata).
-2. **Los use cases dependen de PORTS, nunca de adapters.** Si un use case
-   importa de `adapters/`, rompiste la regla.
-3. **El cableado vive SOLO en el composition root.** `Container` (Py/Go) o
-   `PortsModule` (Nest) es el único sitio que conoce los concretos.
-4. **Los stubs son first-class.** Cada port nuevo tiene su stub antes (o a la
-   vez) que el real, para que dev/tests sigan corriendo con `USE_STUBS=true`.
-5. **Los errores viajan como `DomainError` y se mapean a HTTP en el borde.** Los
-   use cases lanzan `NotFoundError` / `ValidationError` / `InvalidStateError`;
-   el filter (Nest), el `writeError` (Go) o el `HTTPException` mapper (Python)
-   los traducen. Nunca lanzar `HttpException`/`HTTPException` desde el dominio.
-6. **El wire es snake_case** (DTOs de request, mappers de respuesta). El modelo
-   interno usa el casing idiomático del lenguaje.
+## The six hard rules (universal, always enforce)
 
-## Ubicación por capa (universal)
+1. **The domain has zero external dependencies.** No HTTP frameworks, DB
+   drivers, SDKs, or any package outside the standard library inside `domain/`.
+   The only acceptable exception is lightweight DI-marker decorators (NestJS
+   `@Injectable`/`@Inject`, Spring `@Component` when used purely as metadata).
+2. **Use cases depend on ports, never on adapters.** A use case importing a
+   concrete class from `adapters/` is a violation.
+3. **Wiring lives ONLY in the composition root** (`Container`, `PortsModule`,
+   `main.<lang>`, Spring `@Configuration`, whatever the project calls its DI
+   factory). It is the single place that decides which concrete implements
+   which port.
+4. **Stubs/fakes are first-class, not test-only.** Every port has an in-memory
+   implementation living alongside the real one, so dev runs and tests work
+   with zero external dependencies.
+5. **Errors travel as domain types and are mapped to transport at the edge.**
+   Use cases raise `NotFoundError` / `ValidationError` / `InvalidStateError`
+   (or the project's equivalents); the inbound adapter translates them to HTTP
+   status codes in ONE place. Never raise `HttpException`/`HTTPException` from
+   inside the domain.
+6. **Wire format is stable and explicit.** Pick one (usually `snake_case` for
+   REST) and translate to/from internal naming at the inbound DTO boundary, in
+   one place. Internal models stay in the language's idiomatic casing.
 
-| Qué | Dónde (Python · Go · Nest) |
-|---|---|
-| Entidad / value object | `domain/models/` · `internal/domain/model/` · `src/domain/models/` |
-| Error de dominio | `LookupError`/`ValueError` (Py) · `internal/domain/model/errors.go` (Go) · `src/domain/errors/domain.errors.ts` (Nest) |
-| Port | `domain/ports/outbound/` · `internal/domain/port/outbound.go` · `src/domain/ports/*.port.ts` (+ `Symbol` token) |
-| Use case + command | `domain/use_cases/` · `internal/domain/usecase/` · `src/domain/use-cases/` |
-| Application service (facade) | `application/` (todos) |
-| Controller / router | `adapters/inbound/http/routers/` · `internal/adapter/inbound/http/` · `src/adapters/inbound/http/controllers/` |
-| DTO + mapper de respuesta | `…/http/schemas/` (Py) · `…/http/dto.go` (Go) · `…/http/dto/` + `mappers/` (Nest) |
-| Outbound adapter (stub + real) | `adapters/outbound/` |
-| Composition root | `infrastructure/container.py` · `internal/infrastructure/container.go` · `src/infrastructure/ports.module.ts` |
+## Universal recipe: add a use case
 
-## Convenciones por lenguaje
+1. **Read an existing use case** in the target codebase to copy its style.
+2. Define the Command DTO with the use case's input fields.
+3. Define the use case class/function with the ports it needs as constructor
+   parameters (or function args — match the project's idiom).
+4. If a new port is needed:
+   - Define the interface under `domain/ports/`.
+   - Write the **stub/in-memory adapter** under `adapters/outbound/stub/`
+     (or the project's equivalent).
+   - Register the binding in the composition root.
+5. Wire the use case into the appropriate application service.
+6. Expose via an inbound adapter (HTTP controller, worker, CLI) — DTO in,
+   mapped response out.
+7. Add a unit test of the use case using stubs as fakes (no framework needed).
+8. Add or extend an E2E smoke test if a new endpoint was exposed.
 
-### apps/api (Python)
-- Ports como `ABC` + `@abstractmethod`, prefijo `I` (`ICampaignRepository`).
-- Entidades `@dataclass` con `from __future__ import annotations`.
-- Use cases: `class XxxUseCase` con `async def execute(self, cmd)`.
-- Commands `@dataclass`. `StrEnum` para tipos enumerados.
-- Tests: pytest en `apps/api/tests/`, `asyncio_mode=auto`.
-- Verificar: `cd apps/api && USE_STUBS=true pytest -q`.
+## Language-specific idioms
 
-### apps/api-go (Go)
-- Ports como interfaces (SIN prefijo `I`) en `internal/domain/port/outbound.go`.
+These are universal language idioms, not repo-specific. Apply the one that
+matches the target.
+
+### Python (FastAPI, Flask, Litestar, …)
+- Ports: `abc.ABC` + `@abstractmethod` (or `typing.Protocol` for structural).
+  Convention: prefix `I` (`IRepository`) or no prefix — match the project.
+- Entities: `@dataclass`. `pydantic.BaseModel` ONLY at the inbound boundary.
+- Use cases: `class XxxUseCase` with `async def execute(self, cmd)`.
+- Stubs: in-memory classes side-by-side with real adapters.
+
+### Go
+- Ports: interfaces (no `I` prefix — Go convention). Satisfied implicitly.
+- `context.Context` as the first parameter of every port method.
+- Sentinel errors via `errors.New` + wrap with `%w`; match with `errors.Is`.
 - Use cases: `type XxxUseCase struct` + `NewXxxUseCase(...)` + `Execute(ctx, cmd)`.
-- `context.Context` en TODOS los métodos de port.
-- Sentinel errors en `errors.go`, envueltos con `%w`, comparados con `errors.Is`.
-- Verificar la regla de dependencias mecánicamente:
-  ```
-  go list -deps ./internal/domain/... | grep -E 'internal/(adapter|application|infrastructure)'
-  ```
-  Cualquier salida = violación.
-- Tests: `cd apps/api-go && go test -race ./...`.
+- Verify dependency direction mechanically:
+  `go list -deps ./internal/domain/... | grep -E 'internal/(adapter|application|infrastructure)'`
+  must return nothing.
 
-### apps/api-nest (NestJS)
-- Cada port: interface TS **+ `Symbol` token** en el mismo archivo
-  `src/domain/ports/*.port.ts` (las interfaces se borran en runtime; el Symbol
-  es la llave de DI).
-- Use cases: clases `@Injectable()` con constructor `@Inject(TOKEN)`.
-- DTOs con `class-validator` (`@IsString`, `@Length`, `@IsIn`, …) y propiedades
-  en **snake_case**.
-- Errores: subclases de `DomainError`. NUNCA `HttpException` desde un use case.
-- Cableado en `src/infrastructure/ports.module.ts` (`@Global()`).
-- Tests: `cd apps/api-nest && pnpm test && pnpm test:e2e`.
+### NestJS / TypeScript
+- Each port: TS interface + `Symbol` token in the same file. Interfaces erase
+  at runtime; the Symbol is the DI key.
+- Use cases: `@Injectable()` classes with constructor `@Inject(TOKEN)`.
+- DTOs use `class-validator` decorators (`@IsString`, `@Length`, `@IsIn`, …).
+- Errors: subclasses of a `DomainError`, mapped by ONE `ExceptionFilter`.
+- Composition root: a `@Global()` module with `useClass`/`useFactory` providers.
 
-## Recipe: agregar un caso de uso
+### Java / Kotlin (Spring, Quarkus, Micronaut)
+- Ports: interfaces in the `domain` package, no framework annotations.
+- Use cases: classes with constructor injection. Framework annotations
+  (`@Service`, `@Component`) ONLY in the application layer, not in `domain/`.
+- Domain errors as a sealed hierarchy; map with `@ControllerAdvice` /
+  `ExceptionMapper`.
 
-1. **Lee primero los use cases existentes en la app objetivo** para copiar el
-   estilo exacto. No improvises.
-2. Crea el Command DTO con los campos de entrada.
-3. Crea la clase del use case con los ports que necesite por constructor.
-4. Si el use case necesita un port nuevo:
-   - Define la interface en `domain/ports/outbound/` (con su `Symbol` token en Nest).
-   - Escribe el **stub** in-memory en `adapters/outbound/stub*`.
-   - Registra el binding en el composition root.
-5. Cablea el use case en el application service correspondiente
-   (`campaigns_service` / `inspiration_service`).
-6. Expone vía HTTP: método en el controller con su DTO + mapper de respuesta.
-7. Test unitario del use case usando los stubs como fakes directos (sin tocar
-   HTTP).
-8. Si el endpoint es nuevo, extiende el smoke test E2E.
+### Rust (Axum, Actix, Rocket)
+- Ports as `trait`s in `domain/ports/`.
+- Use cases as plain structs holding `Arc<dyn Trait>` ports.
+- Errors as `enum`s with `thiserror::Error`; mapped to HTTP at the handler.
 
-## Después de generar
+## After generating
 
-SIEMPRE:
+Always:
 
-1. Corre los tests de la app afectada (comandos arriba por lenguaje).
-2. Invoca el subagente `architecture-guardian` con los archivos tocados; si
-   reporta violaciones de capa, **arregla antes de terminar**.
-3. Si introdujiste un patrón nuevo (raro), actualiza `docs/patterns.md`.
+1. Run the project's test suite for the affected area.
+2. If `.claude/agents/architecture-guardian.md` (or similar) exists, invoke
+   that subagent with the touched files. Fix any reported layer violations
+   before finishing.
+3. If you ADOPTED new conventions (no doc existed at step 0), propose a brief
+   ADR under `docs/architecture/` describing what you chose and why.
 
-## Cuándo preguntar primero
+## When to ASK first
 
-Usa `AskUserQuestion` si CUALQUIERA de estas no es clara desde el mensaje:
+Use `AskUserQuestion` if ANY of these is unclear from the user's message:
 
-- ¿Qué app es el objetivo (python/go/nest)?
-- ¿Es un use case nuevo en feature existente, o un bounded context nuevo?
-- ¿La operación necesita un port nuevo, o bastan los existentes?
-- ¿Tiene exposición HTTP, o solo se invoca desde un worker?
+- Which app/folder is the target?
+- Language and framework?
+- New use case in an existing bounded context, or a new bounded context?
+- Does the operation need a new outbound port, or do existing ones suffice?
+- HTTP exposure expected, or internal-only (worker, CLI, library)?

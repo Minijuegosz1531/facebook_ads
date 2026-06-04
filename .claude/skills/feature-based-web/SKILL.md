@@ -1,173 +1,139 @@
 ---
 name: feature-based-web
-description: Crea o extiende un frontend siguiendo la arquitectura feature-based documentada en el repo. Úsala cuando el usuario quiera agregar una feature nueva, una página, un componente o un hook a apps/web (Next.js) o apps/web-angular (Angular). Hace cumplir "las features nunca se importan entre sí" y el layout data/ui/pages.
+description: Build or extend a frontend using feature-based architecture with layers. Use when the user wants to add a new feature, a page, a component, a hook, or a service to any frontend app. Framework-agnostic — applies to React/Next.js, Angular, Vue, Svelte, SolidJS. Enforces "features never import other features" and the data/ui/pages split.
 ---
 
-# Skill: crear / extender frontends feature-based
+# Skill: feature-based frontend scaffold / extension
 
-Este repo tiene dos frontends de referencia con la misma forma modular en
-distintos frameworks:
+Universal rules + framework-agnostic recipe for frontends organized by feature.
+Adapts to whatever conventions the target repo already has.
 
-- `apps/web` — Next.js 16 · App Router · Server Components · Server Actions · TanStack Query · Zod 4.
-- `apps/web-angular` — Angular 20 · standalone · signals · Reactive Forms.
+## Step 0 — Discover the project (always)
 
-Esta skill hace cumplir esa arquitectura para todo código nuevo.
+Before generating ANY file:
 
-## Lee primero (fuente de verdad)
+1. Look for existing architecture docs (`docs/architecture/*`, `ARCHITECTURE.md`,
+   sections in `README.md`). If found, **read them — their conventions win**
+   over anything in this skill.
+2. Inspect the actual folder layout (`features/`? `modules/`? a flat
+   `components/`?) and copy the EXACT shape an existing feature uses. Don't
+   impose this skill's defaults if a different structure already exists.
+3. Look for `.claude/agents/architecture-guardian.md` (or similar). If present,
+   its rules are the source of truth.
+4. If none of the above exist, use the defaults below.
 
-Antes de generar archivos, lee EN ORDEN:
+If the target framework/app is ambiguous, ASK with `AskUserQuestion`.
 
-1. `docs/architecture/README.md` — teoría compartida.
-2. `docs/architecture/web.md` o `docs/architecture/web-angular.md` — guía
-   específica de la app objetivo.
-3. `docs/patterns.md` — patrones aplicados, con secciones "Cuándo NO usar".
-4. `.claude/agents/architecture-guardian.md` — reglas que el guardian valida.
+## Universal layout (default when none exists)
 
-Si el usuario NO dijo qué app, **PREGUNTA antes de generar**
-(`AskUserQuestion`). No asumas.
+```
+src/
+├── app/         routing + composition roots (one entry per route)
+├── features/    each feature is autonomous:
+│   └── <feature>/
+│       ├── data/      facade exposing reactive state to components
+│       ├── ui/        presentational components (props in, events out)
+│       ├── pages/     routed smart components — inject the facade
+│       └── domain/    pure feature logic (builders, schemas) — optional
+├── shared/      genuinely shared UI, helpers, types (used by ≥2 features)
+└── core/        client-side infrastructure: API client, interceptors,
+                 DI tokens. (Angular-style; for React/Vue this commonly
+                 lives in shared/lib/.)
+```
 
-## Reglas duras (las hace cumplir el guardian)
+## The four hard rules (universal, always enforce)
 
-1. **Una feature NUNCA importa de otra feature.** `features/campaigns/**` no
-   puede importar de `features/inspiration/**` (ni viceversa). Si dos features
-   necesitan lo mismo, sube a `shared/`. Cuando un flujo cruza features (p. ej.
-   el wizard de nueva campaña), la composición ocurre en la **ruta** — la
-   página es el composition root, no un componente de feature.
-2. **`shared/` y `core/` nunca importan de `features/`.** Las dependencias
-   fluyen `app → features → shared/core`, jamás al revés.
-3. **Componentes en `ui/` son presentacionales.** Sin servicios inyectados;
-   solo `input()`/`output()` (Angular) o props/callbacks (React). `OnPush` en
-   Angular.
-4. **Solo el `data/` (o `hooks/`/`actions/`) de la feature llama al API
-   client.** Páginas y `ui/` hablan con la facade, nunca con
-   `HttpClient`/`fetch` directamente.
+1. **A feature NEVER imports from another feature.** `features/a/` importing
+   from `features/b/` is a violation. If two features need the same thing,
+   it belongs in `shared/`. When a flow genuinely crosses features (e.g. a
+   multi-step wizard), composition happens **at the route** — the page is
+   the composition root, not a component inside a feature.
+2. **`shared/` and `core/` never import from `features/`.** Dependencies flow
+   `app → features → shared/core`, never backward.
+3. **Components in `ui/` are presentational only.** No injected services, no
+   API calls, no global state — only props/inputs and emitted events. Use
+   `OnPush`/memoization where the framework offers it.
+4. **Only the feature's `data/` layer calls the API client.** Pages and `ui/`
+   components talk to the facade, never to `fetch`/`HttpClient`/`axios`
+   directly.
 
-## Forma del cambio (pregunta si no es claro)
+## Universal recipe: add a feature
 
-1. **Feature nueva** (lo más común). Recurso/flujo nuevo.
-   → Crear la carpeta de la feature con su subestructura; cablear la ruta en `app/`.
-2. **Componente nuevo en feature existente.**
-   → Decidir presentacional (`ui/`) vs container (`pages/`); actualizar
-   consumidores.
-3. **Scaffold de un frontend nuevo en otro framework** (Svelte, Solid, …).
-   → Espeja la estructura existente; no inventes layout.
+1. **Read an existing feature** in the target codebase to copy its exact shape.
+2. Create the feature folder skeleton: `data/`, `ui/`, `pages/`, optionally
+   `domain/` and `types.ts`.
+3. Build the **facade** in `data/`:
+   - Holds state (signals / observables / query hooks — match framework idiom).
+   - Calls the API client; never `fetch` directly.
+   - Exposes reactive state that components subscribe to.
+4. Build **presentational** components in `ui/`: receive data via props/inputs,
+   emit events. No services injected.
+5. Build the routed **container** in `pages/`: injects the facade, passes data
+   down, handles navigation.
+6. Add a lazy route in the app's router config.
+7. If the API surface changes, extend the shared API client + DTO types.
 
-## Ubicación por capa
+## Framework-specific idioms
 
-### apps/web (Next.js)
-
-| Subcarpeta | Qué contiene |
-|---|---|
-| `app/(dashboard)/<f>/page.tsx` | Server Component fino que renderiza el container de la feature |
-| `app/api/<f>/route.ts` | Route Handler (proxy a la API real, o mock con `MOCK_API=1`) |
-| `features/<f>/components/` | Client components (los con `"use client"`) |
-| `features/<f>/hooks/` | TanStack Query hooks (`useXxx`) |
-| `features/<f>/actions/` | Server Actions (`"use server"`) validadas con Zod |
-| `features/<f>/schemas/` | Schemas Zod |
-| `features/<f>/types.ts` | Tipos de la feature; puede re-exportar de `shared/types/api.ts` |
-| `shared/lib/backend/{mock,http}.ts` | Selecciona mock vs http (server-only) |
-| `shared/lib/api-client.ts` | Fetcher cliente hacia `/api/*` |
-
-Composition root para flujos multi-feature: una **page** con `"use client"` en
-`app/(dashboard)/.../page.tsx` (ej. `app/(dashboard)/campaigns/new/page.tsx`).
-
-### apps/web-angular (Angular)
-
-| Subcarpeta | Qué contiene |
-|---|---|
-| `src/app/features/<f>/data/<f>.service.ts` | `@Injectable({ providedIn: 'root' })` facade con **signals** |
-| `src/app/features/<f>/ui/<name>.ts` | Standalone presentacional, `OnPush`, `input()`/`output()` |
-| `src/app/features/<f>/pages/<name>-page.ts` | Container (smart) — inyecta la facade |
-| `src/app/features/<f>/domain/` | Lógica pura (builders, schemas) cuando aporta |
-| `src/app/features/<f>/types.ts` | Re-export de `shared/models/api.models.ts` |
-| `src/app/core/api/api-client.ts` | Adapter sobre `HttpClient` — único sitio que conoce endpoints |
-| `src/app/core/interceptors/` | Interceptores funcionales (base URL, errores) |
-| `src/app/app.routes.ts` | `loadComponent` lazy por ruta |
-
-Composition root para flujos multi-feature: una **routed page** en
-`features/<owning-feature>/pages/` (ej. `features/campaigns/pages/new-campaign-page.ts`).
-
-## Convenciones por framework
-
-### Next.js
-- **Server Components por default.** Marca `"use client"` solo cuando hay
-  hooks/estado/eventos.
-- **Mutaciones vía Server Actions + Zod**: validar, llamar `backend.*`,
-  `revalidatePath(...)`.
-- **Lecturas vía TanStack Query** hits a `/api/*` con `useQuery`.
+### React / Next.js (App Router)
+- **Server Components by default.** Mark `"use client"` only when the file
+  uses hooks, state, or events.
+- **Mutations via Server Actions** validated with Zod (Next.js) or via a
+  TanStack mutation hook (React Router / Remix).
+- **Reads via TanStack Query / SWR** hooks; the facade is a small wrapper.
 - **Polling**: `refetchInterval: q => terminal ? false : 2000`.
-- File naming: `kebab-case.tsx` para componentes, `useXxx.ts` para hooks,
-  `xxx.schema.ts` para Zod.
+- File naming: `kebab-case.tsx` for components, `useXxx.ts` for hooks.
 
-### Angular
-- **Standalone components**, `ChangeDetectionStrategy.OnPush`, sin NgModules.
+### Angular (17+)
+- **Standalone components**, `ChangeDetectionStrategy.OnPush`, no NgModules.
 - **Signals everywhere**: `signal`, `computed`, `effect`, `input()`, `output()`.
-- **Nuevo control flow**: `@if`, `@for (… ; track …)`. NO `*ngIf`/`*ngFor`.
-- **Polling**: RxJS `interval` + `switchMap` + `takeWhile(...; true)` →
-  vuelca en `signal`.
-- **Reactive Forms** con `NonNullableFormBuilder` + `Validators`.
-- **Optimistic UI** en facades (set signal local, revertir en `error`).
-- File naming (Angular 20): sin sufijo `.component` ni `.service` cuando se
-  puede inferir del path — `client-selector.ts`, `clients.service.ts` ok.
+- **New control flow**: `@if`, `@for (… ; track …)`. Do NOT use `*ngIf`/
+  `*ngFor` in new code.
+- **Reactive Forms** with `NonNullableFormBuilder`.
+- **Optimistic UI** in facades (set signal locally, revert on error).
+- **Polling**: RxJS `interval` + `switchMap` + `takeWhile(...; true)` → poured
+  into a signal.
 
-## Recipe: agregar una feature
+### Vue 3
+- **Composition API**, `<script setup>`.
+- Facade as a composable, or a Pinia store (`defineStore`).
+- `ref`/`reactive` for state; `computed` for derivations.
 
-### Next.js
-1. Crea el esqueleto:
-   - `features/<f>/components/<List|Form|Detail>.tsx`
-   - `features/<f>/hooks/use<F>.ts`
-   - `features/<f>/actions/<create|update>.ts` (`"use server"`)
-   - `features/<f>/schemas/<f>.schema.ts`
-   - `features/<f>/types.ts`
-2. Ruta en `app/(dashboard)/<f>/page.tsx` (Server Component renderiza un
-   componente de `features/<f>/components/`).
-3. Si la superficie HTTP es nueva:
-   - Añade route handlers en `app/api/<f>/route.ts`.
-   - Extiende `shared/lib/backend/types.ts`, `mock.ts`, `http.ts`.
-4. Tipos wire en `shared/types/api.ts` si es nuevo.
-5. Verifica con `pnpm build && pnpm typecheck`.
-6. Si añadiste flujo UI, considera un spec Playwright en `e2e/`.
+### Svelte / SvelteKit
+- Facade as a `writable` store or a runes-based class.
+- Presentational components consume props and emit events
+  (`createEventDispatcher`).
 
-### Angular
-1. Crea el esqueleto:
-   - `src/app/features/<f>/data/<f>.service.ts` (`providedIn: 'root'`, signals)
-   - `src/app/features/<f>/ui/<name>.ts` (presentacional)
-   - `src/app/features/<f>/pages/<f>-page.ts` (smart)
-   - `src/app/features/<f>/types.ts`
-2. Si hay endpoint nuevo, extiende `src/app/core/api/api-client.ts` con un
-   método tipado.
-3. Lazy route en `src/app/app.routes.ts`:
-   ```ts
-   { path: '<f>', loadComponent: () => import('./features/<f>/pages/<f>-page').then(m => m.<F>Page) }
-   ```
-4. Modelo wire en `src/app/shared/models/api.models.ts` si es nuevo.
-5. Verifica con `pnpm build` y `pnpm typecheck` (TypeScript estricto).
+### SolidJS
+- Facade as a context provider with signals.
+- Presentational components are plain functions taking props.
 
-## Decisión rápida: presentacional vs container
+## Smart vs presentational — quick decision
 
-| Necesidad | Va en |
+| Need | Goes in |
 |---|---|
-| Lee/escribe datos del backend | `pages/` (container, inyecta la facade) |
-| Recibe datos por props/inputs, emite eventos | `ui/` (presentacional) |
-| Tiene routing | `app/...` (Next) o `pages/` (Angular, registrado en `app.routes.ts`) |
-| Lo usan ≥2 features | `shared/components/` |
+| Reads/writes backend data | `pages/` (smart, injects the facade) |
+| Receives data via props/inputs, emits events | `ui/` (presentational) |
+| Has its own route | router config + a `pages/` component |
+| Used by ≥ 2 features | `shared/components/` |
 
-## Después de generar
+## After generating
 
-SIEMPRE:
+Always:
 
-1. Corre `pnpm build` (y `pnpm typecheck` para Angular) en la app afectada.
-2. Invoca el subagente `architecture-guardian` con los archivos tocados; si
-   reporta cross-feature imports o lógica de negocio en `app/`, **arregla antes
-   de terminar**.
-3. Si añadiste un flujo UI en `apps/web` y existen Playwright tests, invoca el
-   subagente `playwright-e2e` para cubrir el flujo nuevo.
+1. Run the project's build + typecheck for the affected app.
+2. If `.claude/agents/architecture-guardian.md` (or similar) exists, invoke
+   that subagent with the touched files. Fix any cross-feature imports or
+   layer violations before finishing.
+3. If a `playwright-e2e` (or similar E2E) subagent exists and you added a UI
+   flow, invoke it to cover the new path.
 
-## Cuándo preguntar primero
+## When to ASK first
 
-Usa `AskUserQuestion` si CUALQUIERA no es clara:
+Use `AskUserQuestion` if ANY of these is unclear:
 
-- ¿Qué app (web/web-angular)?
-- ¿Feature nueva, o extensión de una existente?
-- ¿La superficie HTTP cambia (endpoint nuevo) o solo consume los existentes?
-- ¿El flujo cruza features (necesita composition root en la ruta)?
+- Which app/folder is the target?
+- Framework (React/Next, Angular, Vue, Svelte, …)?
+- New feature folder, or extension of an existing one?
+- Does the backend surface change (new endpoint), or only consume existing ones?
+- Does the new flow cross features (composition root needed at the route)?
